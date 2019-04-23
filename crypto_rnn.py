@@ -6,11 +6,20 @@ from sklearn import preprocessing
 from collections import deque
 import random
 import numpy as np
+import time
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, LSTM, CuDNNLSTM, BatchNormalization
+from tensorflow.keras.callbacks import TensorBoard
+from tensorflow.keras.callbacks import ModelCheckpoint
 
 # Constants
 SEQ_LEN = 60  # how long of a preceeding sequence to collect for RNN
 FUTURE_PERIOD_PREDICT = 3  # how far into the future are we trying to predict?
 RATIO_TO_PREDICT = "LTC-USD"
+EPOCHS = 10
+BATCH_SIZE = 64
+NAME = f"{RATIO_TO_PREDICT}-{SEQ_LEN}-SEQ-{FUTURE_PERIOD_PREDICT}-PRED-{int(time.time())}"
 
 def classify(current, future):
     '''Function which give the target value regarding the future price'''
@@ -21,11 +30,7 @@ def classify(current, future):
 
 
 def preprocess_df(df):
-    '''Preprocessing function:
-        * Normalize values
-        * Drop NaNs
-        * Get sequential_data set
-    '''
+    '''Preprocessing function which normalize values, drop NaNs, get sequential_data set'''
     df = df.drop("future", 1)  # don't need this anymore.
 
     for col in df.columns:  # go through all of the columns
@@ -128,3 +133,52 @@ validation_x, validation_y = preprocess_df(main_df)
 print(f"train data: {len(train_x)} validation: {len(validation_x)}")
 print(f"Dont buys: {train_y.count(0)}, buys: {train_y.count(1)}")
 print(f"VALIDATION Dont buys: {validation_y.count(0)}, buys: {validation_y.count(1)}")
+
+model = Sequential()
+model.add(CuDNNLSTM(128, input_shape=(train_x.shape[1:]), return_sequences=True))
+model.add(Dropout(0.2))
+model.add(BatchNormalization())  #normalizes activation outputs, same reason you want to normalize your input data.
+
+model.add(CuDNNLSTM(128, return_sequences=True))
+model.add(Dropout(0.1))
+model.add(BatchNormalization())
+
+model.add(CuDNNLSTM(128))
+model.add(Dropout(0.2))
+model.add(BatchNormalization())
+
+model.add(Dense(32, activation='relu'))
+model.add(Dropout(0.2))
+
+model.add(Dense(2, activation='softmax'))
+
+opt = tf.keras.optimizers.Adam(lr=0.001, decay=1e-6)
+
+# Compile model
+model.compile(
+    loss='sparse_categorical_crossentropy',
+    optimizer=opt,
+    metrics=['accuracy']
+)
+
+tensorboard = TensorBoard(log_dir="logs/{}".format(NAME))
+
+filepath = "RNN_Final-{epoch:02d}-{val_acc:.3f}"  # unique file name that will include the epoch and the validation acc for that epoch
+checkpoint = ModelCheckpoint("models/{}.model".format(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')) # saves only the best ones
+
+
+# Train model
+history = model.fit(
+    train_x, train_y,
+    batch_size=BATCH_SIZE,
+    epochs=EPOCHS,
+    validation_data=(validation_x, validation_y),
+    callbacks=[tensorboard, checkpoint],
+)
+
+# Score model
+score = model.evaluate(validation_x, validation_y, verbose=0)
+print('Test loss:', score[0])
+print('Test accuracy:', score[1])
+# Save model
+model.save("models/{}".format(NAME))
