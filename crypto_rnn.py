@@ -46,6 +46,36 @@ def preprocess_df(df):
 
     random.shuffle(sequential_data)  # shuffle for good measure.
 
+    buys = []  # list that will store our buy sequences and targets
+    sells = []  # list that will store our sell sequences and targets
+
+    for seq, target in sequential_data:  # iterate over the sequential data
+        if target == 0:  # if it's a "not buy"
+            sells.append([seq, target])  # append to sells list
+        elif target == 1:  # otherwise if the target is a 1...
+            buys.append([seq, target])  # it's a buy!
+
+    random.shuffle(buys)  # shuffle the buys
+    random.shuffle(sells)  # shuffle the sells!
+
+    lower = min(len(buys), len(sells))  # what's the shorter length?
+
+    # make sure both lists are only up to the shortest length.
+    buys = buys[:lower]
+    # make sure both lists are only up to the shortest length.
+    sells = sells[:lower]
+
+    sequential_data = buys+sells  # add them together
+    random.shuffle(sequential_data) # another shuffle, so the model doesn't get confused with all 1 class then the other.
+
+    X = []
+    y = []
+
+    for seq, target in sequential_data:  # going over our new sequential data
+        X.append(seq)  # X is the sequences
+        y.append(target)  # y is the targets/labels (buys vs sell/notbuy)
+
+    return np.array(X), y  # return X and y...and make X a numpy array! ..import numpy as np
 
 # Joins all csv files into one dataframe
 main_df = pd.DataFrame()  # begin empty
@@ -92,6 +122,9 @@ last_5pct = sorted(main_df.index.values)[-int(0.05*len(times))]  # get the last 
 validation_main_df = main_df[(main_df.index >= last_5pct)]  # make the validation data where the index is in the last 5%
 main_df = main_df[(main_df.index < last_5pct)]  # now the main_df is all the data up to the last 5%
 
-preprocess_df(main_df)
-#train_x, train_y = preprocess_df(main_df)
-#validation_x, validation_y = preprocess_df(main_df)
+train_x, train_y = preprocess_df(main_df)
+validation_x, validation_y = preprocess_df(main_df)
+
+print(f"train data: {len(train_x)} validation: {len(validation_x)}")
+print(f"Dont buys: {train_y.count(0)}, buys: {train_y.count(1)}")
+print(f"VALIDATION Dont buys: {validation_y.count(0)}, buys: {validation_y.count(1)}")
